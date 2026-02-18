@@ -2,105 +2,69 @@ const Product = require('../models/Product');
 const Sale = require('../models/Sale');
 const { Parser } = require('json2csv');
 
-// @desc    Get dashboard statistics
-// @route   GET /api/reports/dashboard
-// @access  Private
+
+
+/* =========================================================
+   DASHBOARD (STOCK BASED)
+========================================================= */
 const getDashboard = async (req, res, next) => {
   try {
+    const now = new Date();
+
+    // Today
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // Week (Monday start)
+    const startOfWeek = new Date(now);
+    const day = startOfWeek.getDay();
+    const diff = (day === 0 ? 6 : day - 1);
+    startOfWeek.setDate(startOfWeek.getDate() - diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    // Month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
     // Total products
     const totalProducts = await Product.countDocuments();
 
-    // Total inventory value
-    const inventoryValue = await Product.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalValue: { $sum: { $multiply: ['$price', '$quantity'] } }
-        }
-      }
-    ]);
-
-    // Low stock count
-    const lowStockCount = await Product.countDocuments({
+    // Low stock
+    const lowStockProducts = await Product.find({
       $expr: { $lte: ['$quantity', '$minStockLevel'] }
+    }).select('name sku quantity minStockLevel');
+
+    const lowStockCount = lowStockProducts.length;
+
+    // Count dispatches today
+    const salesToday = await Sale.countDocuments({
+      createdAt: { $gte: startOfToday }
     });
 
-    // Today's date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Helper to calculate units
+    const unitsSold = async (date) => {
+      const result = await Sale.aggregate([
+        { $match: { createdAt: { $gte: date } } },
+        { $unwind: '$items' },
+        { $group: { _id: null, total: { $sum: '$items.quantity' } } }
+      ]);
+      return result[0]?.total || 0;
+    };
 
-    // Sales today
-    const salesToday = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: today, $lt: tomorrow }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
+    const salesTodayUnits = await unitsSold(startOfToday);
+    const salesThisWeekUnits = await unitsSold(startOfWeek);
+    const salesThisMonthUnits = await unitsSold(startOfMonth);
 
-    // Sales this week
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-
-    const salesThisWeek = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: weekStart }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
-
-    // Sales this month
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const salesThisMonth = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: monthStart }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          totalAmount: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
-
-    // Top selling products (last 30 days)
+    // Top moving products (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const topSellingProducts = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: thirtyDaysAgo }
-        }
-      },
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
       { $unwind: '$items' },
       {
         $group: {
           _id: '$items.product',
-          productName: { $first: '$items.productName' },
-          totalQuantitySold: { $sum: '$items.quantity' },
-          totalRevenue: { $sum: '$items.subtotal' }
+          totalQuantitySold: { $sum: '$items.quantity' }
         }
       },
       { $sort: { totalQuantitySold: -1 } },
@@ -110,44 +74,23 @@ const getDashboard = async (req, res, next) => {
           from: 'products',
           localField: '_id',
           foreignField: '_id',
-          as: 'productDetails'
+          as: 'product'
         }
       },
-      {
-        $project: {
-          product: {
-            _id: '$_id',
-            name: '$productName',
-            sku: { $arrayElemAt: ['$productDetails.sku', 0] }
-          },
-          totalQuantitySold: 1,
-          totalRevenue: 1
-        }
-      }
+      { $unwind: '$product' }
     ]);
-
-    // Low stock products
-    const lowStockProducts = await Product.find({
-      $expr: { $lte: ['$quantity', '$minStockLevel'] }
-    })
-      .select('name sku quantity minStockLevel')
-      .limit(5)
-      .sort({ quantity: 1 });
 
     res.json({
       success: true,
       data: {
         totalProducts,
-        totalInventoryValue: inventoryValue[0]?.totalValue || 0,
         lowStockCount,
-        salesToday: salesToday[0]?.count || 0,
-        salesTodayAmount: salesToday[0]?.totalAmount || 0,
-        salesThisWeek: salesThisWeek[0]?.count || 0,
-        salesThisWeekAmount: salesThisWeek[0]?.totalAmount || 0,
-        salesThisMonth: salesThisMonth[0]?.count || 0,
-        salesThisMonthAmount: salesThisMonth[0]?.totalAmount || 0,
-        topSellingProducts,
-        lowStockProducts
+        lowStockProducts,
+        salesToday,
+        salesTodayUnits,
+        salesThisWeekUnits,
+        salesThisMonthUnits,
+        topSellingProducts
       }
     });
 
@@ -156,9 +99,11 @@ const getDashboard = async (req, res, next) => {
   }
 };
 
-// @desc    Get sales report
-// @route   GET /api/reports/sales
-// @access  Private (Admin, Manager)
+
+
+/* =========================================================
+   SALES REPORT (UNITS BASED)
+========================================================= */
 const getSalesReport = async (req, res, next) => {
   try {
     const { startDate, endDate, groupBy = 'day', format = 'json' } = req.query;
@@ -173,141 +118,75 @@ const getSalesReport = async (req, res, next) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
 
-    if (end < start) {
-      return res.status(400).json({
-        success: false,
-        message: 'End date must be after start date'
-      });
-    }
-
-    // Summary
+    // SUMMARY (count + units)
     const summary = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: start, $lte: end }
-        }
-      },
+      { $match: { createdAt: { $gte: start, $lte: end } } },
+      { $unwind: '$items' },
       {
         $group: {
           _id: null,
-          totalSales: { $sum: 1 },
-          totalRevenue: { $sum: '$totalAmount' }
+          totalDispatches: { $addToSet: '$_id' },
+          totalUnits: { $sum: '$items.quantity' }
         }
       }
     ]);
 
     const summaryData = {
-      totalSales: summary[0]?.totalSales || 0,
-      totalRevenue: summary[0]?.totalRevenue || 0,
-      averageOrderValue: summary[0]?.totalSales > 0
-        ? summary[0].totalRevenue / summary[0].totalSales
-        : 0
+      totalDispatches: summary[0]?.totalDispatches?.length || 0,
+      totalUnits: summary[0]?.totalUnits || 0
     };
 
-    // Sales by period
+    // GROUPING
     let dateFormat;
     switch (groupBy) {
       case 'week':
-        dateFormat = { $week: '$saleDate' };
+        dateFormat = { $week: '$createdAt' };
         break;
       case 'month':
-        dateFormat = { $month: '$saleDate' };
+        dateFormat = { $month: '$createdAt' };
         break;
       default:
-        dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$saleDate' } };
+        dateFormat = { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } };
     }
 
     const salesByPeriod = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: start, $lte: end }
-        }
-      },
+      { $match: { createdAt: { $gte: start, $lte: end } } },
+      { $unwind: '$items' },
       {
         $group: {
           _id: dateFormat,
-          salesCount: { $sum: 1 },
-          revenue: { $sum: '$totalAmount' }
+          dispatches: { $addToSet: '$_id' },
+          units: { $sum: '$items.quantity' }
         }
-      },
-      {
-        $sort: { _id: 1 }
       },
       {
         $project: {
           period: '$_id',
-          salesCount: 1,
-          revenue: 1,
+          dispatchCount: { $size: '$dispatches' },
+          units: 1,
           _id: 0
         }
-      }
+      },
+      { $sort: { period: 1 } }
     ]);
 
-    // Sales by category
-    const salesByCategory = await Sale.aggregate([
-      {
-        $match: {
-          saleDate: { $gte: start, $lte: end }
-        }
-      },
-      { $unwind: '$items' },
-      {
-        $lookup: {
-          from: 'products',
-          localField: 'items.product',
-          foreignField: '_id',
-          as: 'productDetails'
-        }
-      },
-      { $unwind: '$productDetails' },
-      {
-        $lookup: {
-          from: 'categories',
-          localField: 'productDetails.category',
-          foreignField: '_id',
-          as: 'categoryDetails'
-        }
-      },
-      { $unwind: '$categoryDetails' },
-      {
-        $group: {
-          _id: '$categoryDetails._id',
-          category: { $first: '$categoryDetails.name' },
-          salesCount: { $sum: '$items.quantity' },
-          revenue: { $sum: '$items.subtotal' }
-        }
-      },
-      { $sort: { revenue: -1 } },
-      {
-        $project: {
-          category: 1,
-          salesCount: 1,
-          revenue: 1,
-          _id: 0
-        }
-      }
-    ]);
-
-    const reportData = {
-      summary: summaryData,
-      salesByPeriod,
-      salesByCategory
-    };
-
-    // Return CSV format if requested
+    // CSV export
     if (format === 'csv') {
-      const fields = ['period', 'salesCount', 'revenue'];
+      const fields = ['period', 'dispatchCount', 'units'];
       const parser = new Parser({ fields });
       const csv = parser.parse(salesByPeriod);
 
       res.header('Content-Type', 'text/csv');
-      res.header('Content-Disposition', `attachment; filename=sales_report_${startDate}_${endDate}.csv`);
+      res.header('Content-Disposition', `attachment; filename=dispatch_report_${startDate}_${endDate}.csv`);
       return res.send(csv);
     }
 
     res.json({
       success: true,
-      data: reportData
+      data: {
+        summary: summaryData,
+        salesByPeriod
+      }
     });
 
   } catch (error) {
@@ -315,9 +194,11 @@ const getSalesReport = async (req, res, next) => {
   }
 };
 
-// @desc    Get inventory report
-// @route   GET /api/reports/inventory
-// @access  Private (Admin, Manager)
+
+
+/* =========================================================
+   INVENTORY REPORT (NO PRICE)
+========================================================= */
 const getInventoryReport = async (req, res, next) => {
   try {
     const { format = 'json', category } = req.query;
@@ -328,31 +209,24 @@ const getInventoryReport = async (req, res, next) => {
       .populate('category', 'name')
       .sort({ 'category.name': 1, name: 1 });
 
-    // Calculate summary
     const summary = products.reduce((acc, product) => {
-      const value = product.price * product.quantity;
       return {
         totalProducts: acc.totalProducts + 1,
-        totalValue: acc.totalValue + value,
         totalUnits: acc.totalUnits + product.quantity,
         lowStockCount: acc.lowStockCount + (product.isLowStock ? 1 : 0)
       };
-    }, { totalProducts: 0, totalValue: 0, totalUnits: 0, lowStockCount: 0 });
+    }, { totalProducts: 0, totalUnits: 0, lowStockCount: 0 });
 
     const productsData = products.map(p => ({
-      _id: p._id,
-      name: p.name,
       sku: p.sku,
+      name: p.name,
       category: p.category?.name || '',
       quantity: p.quantity,
-      price: p.price,
-      value: p.price * p.quantity,
       isLowStock: p.isLowStock
     }));
 
-    // Return CSV format if requested
     if (format === 'csv') {
-      const fields = ['sku', 'name', 'category', 'quantity', 'price', 'value', 'isLowStock'];
+      const fields = ['sku', 'name', 'category', 'quantity', 'isLowStock'];
       const parser = new Parser({ fields });
       const csv = parser.parse(productsData);
 
@@ -373,6 +247,8 @@ const getInventoryReport = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 module.exports = {
   getDashboard,

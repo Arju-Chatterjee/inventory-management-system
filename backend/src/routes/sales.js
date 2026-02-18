@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   getSales,
   createSale,
+  updateSale,
   deleteSale
 } = require('../controllers/saleController');
 
@@ -16,6 +17,7 @@ router.use(auth);
 // Routes
 router.get('/', getSales);
 router.post('/', createSale);
+router.put('/:id', updateSale);
 router.delete('/:id', roleCheck('admin'), deleteSale);
 
 module.exports = router;

@@ -13,10 +13,8 @@ export const Products = () => {
     description: '',
     category: '',
     supplier: '',
-    price: '',
     quantity: '',
-    minStockLevel: 10,
-    imageUrl: ''
+    minStockLevel: 10
   };
 
   const [products, setProducts] = useState([]);
@@ -67,10 +65,8 @@ export const Products = () => {
       description: product.description || '',
       category: product.category?._id || '',
       supplier: product.supplier?._id || '',
-      price: product.price || '',
       quantity: product.quantity || '',
-      minStockLevel: product.minStockLevel || 10,
-      imageUrl: product.imageUrl || ''
+      minStockLevel: product.minStockLevel || 10
     });
 
     setEditingId(product._id);
@@ -98,15 +94,24 @@ export const Products = () => {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-6">Products</h1>
 
+      {/* FORM */}
       <div className="bg-white p-6 rounded-lg shadow mb-8">
         <h2 className="text-xl font-semibold mb-4">{editingId ? 'Edit Product' : 'Add Product'}</h2>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* FIXED GRID (2 columns only) */}
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
           <input className="border rounded px-3 py-2" name="name" placeholder="Name" value={form.name} onChange={handleChange} />
           <input className="border rounded px-3 py-2" name="sku" placeholder="SKU" value={form.sku} onChange={handleChange} />
-          <input className="border rounded px-3 py-2" name="imageUrl" placeholder="Image URL" value={form.imageUrl} onChange={handleChange}/>
 
-          <textarea className="border rounded px-3 py-2 md:col-span-2 lg:col-span-3" name="description" placeholder="Description" value={form.description} onChange={handleChange} />
+          {/* textarea span adjusted */}
+          <textarea
+            className="border rounded px-3 py-2 md:col-span-2"
+            name="description"
+            placeholder="Description"
+            value={form.description}
+            onChange={handleChange}
+          />
 
           <select className="border rounded px-3 py-2" name="category" value={form.category} onChange={handleChange}>
             <option value="">Select Category</option>
@@ -118,11 +123,10 @@ export const Products = () => {
             {suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
           </select>
 
-          <input className="border rounded px-3 py-2" name="price" type="number" placeholder="Price" value={form.price} onChange={handleChange}/>
           <input className="border rounded px-3 py-2" name="quantity" type="number" placeholder="Quantity" value={form.quantity} onChange={handleChange}/>
           <input className="border rounded px-3 py-2" name="minStockLevel" type="number" placeholder="Min Stock Level" value={form.minStockLevel} onChange={handleChange}/>
 
-          <div className="flex gap-3 mt-2">
+          <div className="flex gap-3 mt-2 md:col-span-2">
             <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" type="submit">
               {editingId ? 'Update Product' : 'Add Product'}
             </button>
@@ -140,16 +144,17 @@ export const Products = () => {
         </form>
       </div>
 
+      {/* TABLE */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-100">
             <tr>
               <th className="text-left p-3">Name</th>
+              <th className="text-left p-3">Description</th>
               <th className="text-left p-3">SKU</th>
               <th className="text-left p-3">Category</th>
               <th className="text-left p-3">Supplier</th>
               <th className="text-right p-3">Stock</th>
-              <th className="text-right p-3">Price</th>
               <th className="text-center p-3">Status</th>
               <th className="text-center p-3">Actions</th>
             </tr>
@@ -158,11 +163,11 @@ export const Products = () => {
             {products.map(p => (
               <tr key={p._id} style={{ backgroundColor: getRowColor(p) }} className="border-b hover:bg-gray-50">
                 <td className="p-3">{p.name}</td>
+                <td className="p-3 max-w-xs truncate" title={p.description}>{p.description || '-'}</td>
                 <td className="p-3">{p.sku}</td>
                 <td className="p-3">{p.category?.name}</td>
                 <td className="p-3">{p.supplier?.name}</td>
                 <td className="p-3 text-right">{p.quantity}</td>
-                <td className="p-3 text-right">₹{p.price}</td>
                 <td className="p-3 text-center font-medium">{getStatus(p)}</td>
                 <td className="p-3 text-center space-x-2">
                   <button className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600" onClick={() => handleEdit(p)}>Edit</button>

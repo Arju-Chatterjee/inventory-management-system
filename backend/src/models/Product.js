@@ -30,9 +30,11 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Supplier'
   },
+
+  // 🔧 CHANGED: now optional (inventory module no longer edits price)
   price: {
     type: Number,
-    required: [true, 'Price is required'],
+    default: 0,
     min: [0, 'Price cannot be negative'],
     validate: {
       validator: function(value) {
@@ -41,6 +43,7 @@ const productSchema = new mongoose.Schema({
       message: 'Price must be a valid positive number'
     }
   },
+
   quantity: {
     type: Number,
     required: [true, 'Quantity is required'],
@@ -60,14 +63,19 @@ const productSchema = new mongoose.Schema({
       message: 'Minimum stock level must be an integer'
     }
   },
+
+  // 🔧 CHANGED: default empty so frontend doesn't need to send
   imageUrl: {
     type: String,
-    trim: true
+    trim: true,
+    default: ''
   },
+
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }
+
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -85,7 +93,7 @@ productSchema.virtual('isLowStock').get(function() {
   return this.quantity <= this.minStockLevel;
 });
 
-// Pre-save middleware to validate category exists
+// Pre-save middleware to validate category & supplier
 productSchema.pre('save', async function(next) {
   if (this.isModified('category')) {
     const Category = mongoose.model('Category');

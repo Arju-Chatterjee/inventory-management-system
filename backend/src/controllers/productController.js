@@ -15,10 +15,8 @@ const getProducts = async (req, res, next) => {
       sortOrder = 'desc'
     } = req.query;
 
-    // Build query
     const query = {};
 
-    // Search by name, SKU, or description
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -27,25 +25,18 @@ const getProducts = async (req, res, next) => {
       ];
     }
 
-    // Filter by category
-    if (category) {
-      query.category = category;
-    }
+    if (category) query.category = category;
 
-    // Filter by low stock
     if (lowStock === 'true') {
       query.$expr = { $lte: ['$quantity', '$minStockLevel'] };
     }
 
-    // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const limitNum = Math.min(parseInt(limit), 100);
 
-    // Sort
     const sortObj = {};
     sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-    // Execute query
     const products = await Product.find(query)
       .populate('category', 'name')
       .populate('supplier', 'name')
@@ -73,8 +64,6 @@ const getProducts = async (req, res, next) => {
 };
 
 // @desc    Get single product
-// @route   GET /api/products/:id
-// @access  Private
 const getProduct = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id)
@@ -89,19 +78,14 @@ const getProduct = async (req, res, next) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: product
-    });
+    res.json({ success: true, data: product });
 
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Create product
-// @route   POST /api/products
-// @access  Private (Admin, Manager)
+// @desc    Create product (price removed)
 const createProduct = async (req, res, next) => {
   try {
     const {
@@ -110,17 +94,14 @@ const createProduct = async (req, res, next) => {
       description,
       category,
       supplier,
-      price,
       quantity,
-      minStockLevel,
-      imageUrl
+      minStockLevel
     } = req.body;
 
-    // Validation
-    if (!name || !sku || !category || price === undefined || quantity === undefined) {
+    if (!name || !sku || !category || quantity === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Name, SKU, category, price, and quantity are required'
+        message: 'Name, SKU, category and quantity are required'
       });
     }
 
@@ -130,10 +111,10 @@ const createProduct = async (req, res, next) => {
       description,
       category,
       supplier,
-      price,
       quantity,
       minStockLevel: minStockLevel || 10,
-      imageUrl,
+      price: 0,
+      imageUrl: '',
       createdBy: req.user._id
     });
 
@@ -150,9 +131,7 @@ const createProduct = async (req, res, next) => {
   }
 };
 
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Private (Admin, Manager)
+// @desc    Update product (price locked)
 const updateProduct = async (req, res, next) => {
   try {
     const {
@@ -161,10 +140,8 @@ const updateProduct = async (req, res, next) => {
       description,
       category,
       supplier,
-      price,
       quantity,
-      minStockLevel,
-      imageUrl
+      minStockLevel
     } = req.body;
 
     const product = await Product.findById(req.params.id);
@@ -176,7 +153,6 @@ const updateProduct = async (req, res, next) => {
       });
     }
 
-    // Check for duplicate SKU if changed
     if (sku && sku.toUpperCase() !== product.sku) {
       const existingProduct = await Product.findOne({ sku: sku.toUpperCase() });
       if (existingProduct) {
@@ -188,15 +164,12 @@ const updateProduct = async (req, res, next) => {
       product.sku = sku.toUpperCase();
     }
 
-    // Update fields
     if (name) product.name = name;
     if (description !== undefined) product.description = description;
     if (category) product.category = category;
     if (supplier !== undefined) product.supplier = supplier;
-    if (price !== undefined) product.price = price;
     if (quantity !== undefined) product.quantity = quantity;
     if (minStockLevel !== undefined) product.minStockLevel = minStockLevel;
-    if (imageUrl !== undefined) product.imageUrl = imageUrl;
 
     await product.save();
     await product.populate(['category', 'supplier']);
@@ -213,8 +186,6 @@ const updateProduct = async (req, res, next) => {
 };
 
 // @desc    Delete product
-// @route   DELETE /api/products/:id
-// @access  Private (Admin)
 const deleteProduct = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -226,7 +197,6 @@ const deleteProduct = async (req, res, next) => {
       });
     }
 
-    // Check if product has sales history
     const Sale = require('../models/Sale');
     const salesCount = await Sale.countDocuments({ 'items.product': product._id });
 
