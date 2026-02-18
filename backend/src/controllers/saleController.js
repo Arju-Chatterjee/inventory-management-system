@@ -1,243 +1,128 @@
-const mongoose = require('mongoose');
-const Sale = require('../models/Sale');
-const Product = require('../models/Product');
+const Sale = require("../models/Sale");
+const Product = require("../models/Product");
 
-// @desc    Get all sales with filtering and pagination
-// @route   GET /api/sales
-// @access  Private
-const getSales = async (req, res, next) => {
+// ================= CREATE SALE =================
+const createSale = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 20,
-      startDate,
-      endDate,
-      soldBy,
-      sortBy = 'saleDate',
-      sortOrder = 'desc'
-    } = req.query;
+      items,
+      customerName,
+      customerLocation,
+      customerPhone,
+      amountReceived,
+      notes,
+    } = req.body;
 
-    // Build query
-    const query = {};
+    if (!items || items.length === 0)
+      return res.status(400).json({ message: "No items provided" });
 
-    // Date range filter
-    if (startDate || endDate) {
-      query.saleDate = {};
-      if (startDate) query.saleDate.$gte = new Date(startDate);
-      if (endDate) query.saleDate.$lte = new Date(endDate);
-    }
+    // verify user
+    if (!req.user || !req.user._id)
+      return res.status(401).json({ message: "Unauthorized user" });
 
-    // Filter by staff member
-    if (soldBy) {
-      query.soldBy = soldBy;
-    }
-
-    // Pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const limitNum = Math.min(parseInt(limit), 100);
-
-    // Sort
-    const sortObj = {};
-    sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    // Execute query
-    const sales = await Sale.find(query)
-      .populate('soldBy', 'username firstName lastName')
-      .sort(sortObj)
-      .skip(skip)
-      .limit(limitNum);
-
-    const total = await Sale.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: sales,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limitNum),
-        totalItems: total,
-        itemsPerPage: limitNum
-      }
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Get single sale
-// @route   GET /api/sales/:id
-// @access  Private
-const getSale = async (req, res, next) => {
-  try {
-    const sale = await Sale.findById(req.params.id)
-      .populate('soldBy', 'username firstName lastName');
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: 'Sale not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: sale
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Create sale (with transaction)
-// @route   POST /api/sales
-// @access  Private
-const createSale = async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const { items, notes } = req.body;
-
-    // Validation
-    if (!items || items.length === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: 'At least one item is required'
-      });
-    }
-
-    // Process each item
-    const processedItems = [];
-
+    // check stock availability
     for (const item of items) {
-      const { product: productId, quantity } = item;
+      const product = await Product.findById(item.product);
 
-      if (!productId || !quantity || quantity < 1) {
-        await session.abortTransaction();
-        session.endSession();
+      if (!product)
+        return res
+          .status(404)
+          .json({ message: `Product not found: ${item.productName}` });
+
+      if (product.quantity < item.quantity)
         return res.status(400).json({
-          success: false,
-          message: 'Invalid item data: product and quantity (min 1) are required'
+          message: `Not enough stock for ${product.name}. Available: ${product.quantity}`,
         });
-      }
-
-      // Fetch product
-      const product = await Product.findById(productId).session(session);
-
-      if (!product) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(404).json({
-          success: false,
-          message: `Product not found`
-        });
-      }
-
-      // Check stock availability
-      if (product.quantity < quantity) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}. Available: ${product.quantity}, Requested: ${quantity}`
-        });
-      }
-
-      // Reduce product quantity
-      product.quantity -= quantity;
-      await product.save({ session });
-
-      // Add to processed items
-      processedItems.push({
-        product: product._id,
-        productName: product.name,
-        quantity: quantity,
-        unitPrice: product.price,
-        subtotal: quantity * product.price
-      });
     }
 
-    // Create sale
-    const sale = await Sale.create([{
-      items: processedItems,
+    // deduct stock
+    for (const item of items) {
+      await Product.findByIdAndUpdate(
+        item.product,
+        { $inc: { quantity: -item.quantity } },
+        { new: true },
+      );
+    }
+
+    // safer serial generator (ignores old records without serialNumber)
+    const lastSale = await Sale.findOne({ serialNumber: { $exists: true } })
+      .sort({ serialNumber: -1 })
+      .lean();
+
+    const nextSerial = lastSale ? lastSale.serialNumber + 1 : 1;
+
+    // create sale
+    const sale = await Sale.create({
+      serialNumber: nextSerial,
+      customerName,
+      customerLocation,
+      customerPhone,
+      amountReceived,
+      notes,
+      items,
       soldBy: req.user._id,
-      notes: notes || ''
-    }], { session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    // Populate and return
-    const populatedSale = await Sale.findById(sale[0]._id)
-      .populate('soldBy', 'username firstName lastName');
+    });
 
     res.status(201).json({
       success: true,
-      message: 'Sale recorded successfully',
-      data: populatedSale
+      data: sale,
     });
-
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    next(error);
+  } catch (err) {
+    console.error("CREATE SALE ERROR:", err);
+    res.status(500).json({ message: "Error creating sale" });
   }
 };
 
-// @desc    Delete/void sale (restore quantities)
-// @route   DELETE /api/sales/:id
-// @access  Private (Admin)
-const deleteSale = async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+// ================= GET ALL SALES =================
+const getSales = async (req, res) => {
   try {
-    const sale = await Sale.findById(req.params.id).session(session);
 
-    if (!sale) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: 'Sale not found'
-      });
-    }
-
-    // Restore product quantities
-    for (const item of sale.items) {
-      const product = await Product.findById(item.product).session(session);
-
-      if (product) {
-        product.quantity += item.quantity;
-        await product.save({ session });
-      }
-    }
-
-    // Delete sale
-    await sale.deleteOne({ session });
-
-    await session.commitTransaction();
-    session.endSession();
+    const sales = await Sale.find({})
+      .populate('soldBy', 'firstName lastName')
+      .populate('items.product', 'name price')
+      .sort({ createdAt: -1 })   // ← use timestamp instead
+      .lean();
 
     res.json({
       success: true,
-      message: 'Sale voided successfully'
+      data: sales
     });
 
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    next(error);
+  } catch (err) {
+    console.error("GET SALES ERROR:", err);
+    res.status(500).json({ message: 'Error fetching sales' });
+  }
+};
+
+
+// ================= DELETE SALE =================
+const deleteSale = async (req, res) => {
+  try {
+    const sale = await Sale.findById(req.params.id);
+
+    if (!sale) return res.status(404).json({ message: "Sale not found" });
+
+    // restore stock
+    for (const item of sale.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { quantity: item.quantity },
+      });
+    }
+
+    await sale.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Sale deleted & stock restored",
+    });
+  } catch (err) {
+    console.error("DELETE SALE ERROR:", err);
+    res.status(500).json({ message: "Error deleting sale" });
   }
 };
 
 module.exports = {
-  getSales,
-  getSale,
   createSale,
-  deleteSale
+  getSales,
+  deleteSale,
 };

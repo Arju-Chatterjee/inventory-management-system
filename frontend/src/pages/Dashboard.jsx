@@ -49,7 +49,7 @@ export const Dashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-gray-500 text-sm font-medium">Inventory Value</h3>
           <p className="text-3xl font-bold text-green-600">
-            ${(stats?.totalInventoryValue || 0).toFixed(2)}
+            ₹{(stats?.totalInventoryValue || 0).toFixed(2)}
           </p>
         </div>
 
@@ -62,7 +62,7 @@ export const Dashboard = () => {
           <h3 className="text-gray-500 text-sm font-medium">Sales Today</h3>
           <p className="text-3xl font-bold text-purple-600">{stats?.salesToday || 0}</p>
           <p className="text-sm text-gray-500 mt-1">
-            ${(stats?.salesTodayAmount || 0).toFixed(2)}
+            ₹{(stats?.salesTodayAmount || 0).toFixed(2)}
           </p>
         </div>
       </div>
@@ -72,13 +72,13 @@ export const Dashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Sales This Week</h3>
           <p className="text-2xl font-bold">{stats?.salesThisWeek || 0} transactions</p>
-          <p className="text-gray-600">${(stats?.salesThisWeekAmount || 0).toFixed(2)}</p>
+          <p className="text-gray-600">₹{(stats?.salesThisWeekAmount || 0).toFixed(2)}</p>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Sales This Month</h3>
           <p className="text-2xl font-bold">{stats?.salesThisMonth || 0} transactions</p>
-          <p className="text-gray-600">${(stats?.salesThisMonthAmount || 0).toFixed(2)}</p>
+          <p className="text-gray-600">₹{(stats?.salesThisMonthAmount || 0).toFixed(2)}</p>
         </div>
       </div>
 

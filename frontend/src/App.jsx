@@ -1,6 +1,9 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Navbar } from './components/common/Navbar';
+
+import Navbar from "./components/common/Navbar";
+import { LoadingSpinner } from './components/common/LoadingSpinner';
+
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
@@ -9,15 +12,16 @@ import { Categories } from './pages/Categories';
 import { Suppliers } from './pages/Suppliers';
 import { Users } from './pages/Users';
 import { Reports } from './pages/Reports';
-import { LoadingSpinner } from './components/common/LoadingSpinner';
 
-// Protected Route Component
-const ProtectedRoute = ({ children }) => {
+
+
+/* =========================
+   Protected Layout Route
+   ========================= */
+const ProtectedRoute = () => {
   const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  if (loading) return <LoadingSpinner />;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -27,100 +31,62 @@ const ProtectedRoute = ({ children }) => {
     <>
       <Navbar />
       <div className="min-h-screen bg-gray-100">
-        {children}
+        <Outlet />
       </div>
     </>
   );
 };
 
-// Admin-only Route Component
-const AdminRoute = ({ children }) => {
+
+
+/* =========================
+   Admin Only Route
+   ========================= */
+const AdminRoute = () => {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  if (loading) return <LoadingSpinner />;
 
   if (user?.role !== 'admin') {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return children;
+  return <Outlet />;
 };
 
+
+
+/* =========================
+   App Component
+   ========================= */
 function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Routes */}
+
+          {/* PUBLIC ROUTE */}
           <Route path="/login" element={<Login />} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/products"
-            element={
-              <ProtectedRoute>
-                <Products />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/sales"
-            element={
-              <ProtectedRoute>
-                <Sales />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/categories"
-            element={
-              <ProtectedRoute>
-                <Categories />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/suppliers"
-            element={
-              <ProtectedRoute>
-                <Suppliers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reports"
-            element={
-              <ProtectedRoute>
-                <Reports />
-              </ProtectedRoute>
-            }
-          />
+          {/* PROTECTED ROUTES */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/sales" element={<Sales />} />
+            <Route path="/categories" element={<Categories />} />
+            <Route path="/suppliers" element={<Suppliers />} />
+            <Route path="/reports" element={<Reports />} />
 
-          {/* Admin-Only Routes */}
-          <Route
-            path="/users"
-            element={
-              <ProtectedRoute>
-                <AdminRoute>
-                  <Users />
-                </AdminRoute>
-              </ProtectedRoute>
-            }
-          />
+            {/* ADMIN ONLY */}
+            <Route element={<AdminRoute />}>
+              <Route path="/users" element={<Users />} />
+            </Route>
+          </Route>
 
-          {/* Default Redirect */}
+          {/* DEFAULT REDIRECTS */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
         </Routes>
       </Router>
     </AuthProvider>

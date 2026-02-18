@@ -1,81 +1,172 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { productService } from '../services/productService';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
-import { Button } from '../components/common/Button';
+import { categoryService } from '../services/categoryService';
+import { supplierService } from '../services/supplierService';
 
 export const Products = () => {
+
+  const LOW_STOCK_LIMIT = 5;
+
+  const emptyForm = {
+    name: '',
+    sku: '',
+    description: '',
+    category: '',
+    supplier: '',
+    price: '',
+    quantity: '',
+    minStockLevel: 10,
+    imageUrl: ''
+  };
+
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  const loadData = async () => {
+    const p = await productService.getAll();
+    const c = await categoryService.getAll();
+    const s = await supplierService.getAll();
 
-  const fetchProducts = async () => {
+    setProducts(p.data.data || p.data);
+    setCategories(c.data.data || c.data);
+    setSuppliers(s.data.data || s.data);
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleChange = e =>
+    setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+
     try {
-      const response = await productService.getProducts({ search });
-      setProducts(response.data);
+      if (editingId) {
+        await productService.update(editingId, form);
+        setEditingId(null);
+      } else {
+        await productService.create(form);
+      }
+
+      setForm(emptyForm);
+      loadData();
+
     } catch (err) {
-      console.error('Failed to fetch products:', err);
-    } finally {
-      setLoading(false);
+      console.error(err.response?.data || err.message);
+      alert('Error saving product');
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  const handleEdit = (product) => {
+    setForm({
+      name: product.name || '',
+      sku: product.sku || '',
+      description: product.description || '',
+      category: product.category?._id || '',
+      supplier: product.supplier?._id || '',
+      price: product.price || '',
+      quantity: product.quantity || '',
+      minStockLevel: product.minStockLevel || 10,
+      imageUrl: product.imageUrl || ''
+    });
+
+    setEditingId(product._id);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete product?')) return;
+    await productService.remove(id);
+    loadData();
+  };
+
+  const getRowColor = (p) => {
+    if (p.quantity === 0) return '#ffcccc';
+    if (p.quantity <= LOW_STOCK_LIMIT) return '#fff3cd';
+    return 'transparent';
+  };
+
+  const getStatus = (p) => {
+    if (p.quantity === 0) return 'Out of Stock';
+    if (p.quantity <= LOW_STOCK_LIMIT) return 'Low Stock';
+    return 'In Stock';
+  };
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Products</h1>
-        <Button>Add Product</Button>
-      </div>
+      <h1 className="text-3xl font-bold mb-6">Products</h1>
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search products..."
-          className="px-4 py-2 border rounded-md w-full md:w-96"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 className="text-xl font-semibold mb-4">{editingId ? 'Edit Product' : 'Add Product'}</h2>
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <input className="border rounded px-3 py-2" name="name" placeholder="Name" value={form.name} onChange={handleChange} />
+          <input className="border rounded px-3 py-2" name="sku" placeholder="SKU" value={form.sku} onChange={handleChange} />
+          <input className="border rounded px-3 py-2" name="imageUrl" placeholder="Image URL" value={form.imageUrl} onChange={handleChange}/>
+
+          <textarea className="border rounded px-3 py-2 md:col-span-2 lg:col-span-3" name="description" placeholder="Description" value={form.description} onChange={handleChange} />
+
+          <select className="border rounded px-3 py-2" name="category" value={form.category} onChange={handleChange}>
+            <option value="">Select Category</option>
+            {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+          </select>
+
+          <select className="border rounded px-3 py-2" name="supplier" value={form.supplier} onChange={handleChange}>
+            <option value="">Select Supplier</option>
+            {suppliers.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+          </select>
+
+          <input className="border rounded px-3 py-2" name="price" type="number" placeholder="Price" value={form.price} onChange={handleChange}/>
+          <input className="border rounded px-3 py-2" name="quantity" type="number" placeholder="Quantity" value={form.quantity} onChange={handleChange}/>
+          <input className="border rounded px-3 py-2" name="minStockLevel" type="number" placeholder="Min Stock Level" value={form.minStockLevel} onChange={handleChange}/>
+
+          <div className="flex gap-3 mt-2">
+            <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" type="submit">
+              {editingId ? 'Update Product' : 'Add Product'}
+            </button>
+
+            {editingId && (
+              <button
+                type="button"
+                className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+                onClick={() => { setEditingId(null); setForm(emptyForm); }}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
       </div>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-100">
             <tr>
-              <th className="text-left p-4">Name</th>
-              <th className="text-left p-4">SKU</th>
-              <th className="text-left p-4">Category</th>
-              <th className="text-right p-4">Price</th>
-              <th className="text-right p-4">Quantity</th>
-              <th className="text-left p-4">Status</th>
-              <th className="text-left p-4">Actions</th>
+              <th className="text-left p-3">Name</th>
+              <th className="text-left p-3">SKU</th>
+              <th className="text-left p-3">Category</th>
+              <th className="text-left p-3">Supplier</th>
+              <th className="text-right p-3">Stock</th>
+              <th className="text-right p-3">Price</th>
+              <th className="text-center p-3">Status</th>
+              <th className="text-center p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
-              <tr key={product._id} className="border-t hover:bg-gray-50">
-                <td className="p-4">{product.name}</td>
-                <td className="p-4">{product.sku}</td>
-                <td className="p-4">{product.category?.name}</td>
-                <td className="p-4 text-right">${product.price.toFixed(2)}</td>
-                <td className="p-4 text-right">{product.quantity}</td>
-                <td className="p-4">
-                  <span
-                    className={`px-2 py-1 rounded text-sm ${
-                      product.isLowStock
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}
-                  >
-                    {product.isLowStock ? 'Low Stock' : 'In Stock'}
-                  </span>
-                </td>
-                <td className="p-4">
-                  <Button variant="secondary" className="text-sm mr-2">Edit</Button>
+            {products.map(p => (
+              <tr key={p._id} style={{ backgroundColor: getRowColor(p) }} className="border-b hover:bg-gray-50">
+                <td className="p-3">{p.name}</td>
+                <td className="p-3">{p.sku}</td>
+                <td className="p-3">{p.category?.name}</td>
+                <td className="p-3">{p.supplier?.name}</td>
+                <td className="p-3 text-right">{p.quantity}</td>
+                <td className="p-3 text-right">₹{p.price}</td>
+                <td className="p-3 text-center font-medium">{getStatus(p)}</td>
+                <td className="p-3 text-center space-x-2">
+                  <button className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600" onClick={() => handleEdit(p)}>Edit</button>
+                  <button className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" onClick={() => handleDelete(p._id)}>Delete</button>
                 </td>
               </tr>
             ))}

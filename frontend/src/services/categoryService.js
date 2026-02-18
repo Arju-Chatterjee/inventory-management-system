@@ -1,23 +1,11 @@
 import api from './api';
 
 export const categoryService = {
-  async getCategories() {
-    const { data } = await api.get('/categories');
-    return data;
-  },
+  getAll: () => api.get('/categories'),
 
-  async createCategory(categoryData) {
-    const { data } = await api.post('/categories', categoryData);
-    return data;
-  },
+  create: (data) => api.post('/categories', data),
 
-  async updateCategory(id, categoryData) {
-    const { data } = await api.put(`/categories/${id}`, categoryData);
-    return data;
-  },
+  update: (id, data) => api.put(`/categories/${id}`, data),
 
-  async deleteCategory(id) {
-    const { data } = await api.delete(`/categories/${id}`);
-    return data;
-  }
+  remove: (id) => api.delete(`/categories/${id}`)
 };

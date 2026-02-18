@@ -1,23 +1,11 @@
 import api from './api';
 
 export const supplierService = {
-  async getSuppliers() {
-    const { data } = await api.get('/suppliers');
-    return data;
-  },
+  getAll: () => api.get('/suppliers'),
 
-  async createSupplier(supplierData) {
-    const { data } = await api.post('/suppliers', supplierData);
-    return data;
-  },
+  create: (data) => api.post('/suppliers', data),
 
-  async updateSupplier(id, supplierData) {
-    const { data } = await api.put(`/suppliers/${id}`, supplierData);
-    return data;
-  },
+  update: (id, data) => api.put(`/suppliers/${id}`, data),
 
-  async deleteSupplier(id) {
-    const { data } = await api.delete(`/suppliers/${id}`);
-    return data;
-  }
+  remove: (id) => api.delete(`/suppliers/${id}`)
 };
